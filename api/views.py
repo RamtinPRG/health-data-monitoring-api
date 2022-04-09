@@ -1,3 +1,5 @@
+from urllib import response
+from django.dispatch import receiver
 from django.shortcuts import render
 from django.contrib.auth import login, logout, authenticate
 
@@ -19,10 +21,12 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
 
         # Add custom claims
+        token['id'] = user.id
         token['username'] = user.username
         token['first_name'] = user.first_name
         token['last_name'] = user.last_name
         token['email'] = user.email
+        token['account_type'] = user.account_type
 
         return token
 
@@ -99,3 +103,209 @@ def authentication_status(request):
         return Response({'authenticated': True})
     else:
         return Response({'authenticated': False})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def doctors_view(request):
+    if request.user.account_type == 'patient':
+        doctors = request.user.patient.doctor_set.all()
+        serializer = serializers.DoctorSerializer(doctors, many=True)
+        return Response(serializer.data)
+    else:
+        return Response({'error': 'access denied'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def inspectors_view(request):
+    if request.user.account_type == 'inspector':
+        inspectors = request.user.inspector.patient_set.all()
+        serializer = serializers.InspectorSerializer(inspectors, many=True)
+        return Response(serializer.data)
+    else:
+        return Response({'error': 'access denied'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def patients_view(request):
+    if request.user.account_type == 'doctor':
+        patients = request.user.doctor.patients.all()
+    elif request.user.account_type == 'inspector':
+        patients = request.user.inspector.patients.all()
+    else:
+        return Response({'error': 'access denied'})
+    serializer = serializers.PatientSerializer(patients, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def doctor_view(request, pk):
+    if request.user.account_type == 'patient':
+        doctor = request.user.patient.doctor_set.filter(pk=pk)
+        if len(doctor) != 0:
+            serializer = serializers.DoctorSerializer(doctor)
+            return Response(serializer.data)
+    return Response({'error': 'access denied'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def patient_view(request, pk):
+    if request.user.account_type == 'doctor' or request.user.account_type == 'inspector':
+        patient = request.user.inspector.patients.filter(pk=pk)
+        if patient.exists():
+            serializer = serializers.PatientSerializer(patient)
+            return Response(serializer.data)
+    return Response({'error': 'access denied'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def inspector_view(request, pk):
+    if request.user.account_type == 'patient':
+        inspector = request.user.patient.inspector_set.filter(pk=pk)
+        if inspector.exists():
+            serializer = serializers.InspectorSerializer(inspector)
+            return Response(serializer.data)
+    return Response({'error': 'access denied'})
+
+
+@api_view(['GET', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def request_by_id_view(request, pk):
+    request_object = models.Request.objects.filter(pk=pk)
+    if request_object.exists():
+        request_object = request_object.first()
+        if request.user.account_type == 'patient':
+            if request_object.reciever == request.user:
+                if request.method == 'GET':
+                    serializer = serializers.RequestSerializer(request_object)
+                    return Response(serializer.data)
+                elif request.method == 'DELETE':
+                    request_object.delete()
+                    return Response({'success': 'request deleted successfully'})
+            else:
+                return Response({'error': 'access denied'})
+        else:
+            if request_object.sender == request.user:
+                if request.method == 'GET':
+                    serializer = serializers.RequestSerializer(request_object)
+                    return Response(serializer.data)
+                elif request.method == 'DELETE':
+                    request_object.delete()
+                    return Response({'success': 'request deleted successfully'})
+            else:
+                return Response({'error': 'access denied'})
+    else:
+        return Response({'error': 'request not found'})
+    return Response({'error': 'access denied'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def request_view(request):
+    receiver = models.User.objects.filter(username=request.data.get('username'))
+    if not receiver.exists():
+        return Response({'error': 'receiver not found'})
+    receiver = receiver.first()
+    if request.user.account_type != 'patient' and receiver.account_type == 'patient':
+        if models.Request.objects.filter(sender=request.user, receiver=receiver, status='pending').exists():
+            return Response({'error': 'request has already been sent'})
+        else:
+            request_object = models.Request(sender=request.user, receiver=receiver, status='pending')
+            request_object.save()
+            serializer = serializers.RequestSerializer(request_object)
+            data = serializer.data
+            data['success'] = 'request sent'
+            return Response(data)
+    else:
+        return Response({'error': 'access denied'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def requests_view(request):
+    if request.user.account_type == 'patient':
+        requests = models.Request.objects.filter(receiver=request.user)
+    else:
+        requests = models.Request.objects.filter(sender=request.user)
+    serializer = serializers.RequestSerializer(requests, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def accept_request_view(request):
+    if request.user.account_type == 'patient':
+        request_object = models.Request.objects.filter(pk=request.data.get('id'))
+        if request_object.exists():
+            request_object = request_object.first()
+            if request_object.status == 'pending':
+                request_object.status = 'accepted'
+                request_object.save()
+                sender = request_object.sender
+                if sender.account_type == 'doctor':
+                    sender.doctor.patients.add(request_object.receiver.patient)
+                elif sender.account_type == 'inspector':
+                    sender.inspector.patients.add(request_object.receiver.patient)
+                serializer = serializers.RequestSerializer(request_object)
+                data = serializer.data
+                data['success'] = 'request accepted'
+                return Response(data)
+            else:
+                return Response({'error': 'request has already been accepted or rejected'})
+        else:
+            return Response({'error': 'request not found'})
+    else:
+        return Response({'error': 'access denied'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reject_request_view(request):
+    if request.user.account_type == 'patient':
+        request_object = models.Request.objects.filter(pk=request.data.get('id'))
+        if request_object.exists():
+            request_object = request_object.first()
+            if request_object.status == 'pending':
+                request_object.status = 'rejected'
+                request_object.save()
+                serializer = serializers.RequestSerializer(request_object)
+                data = serializer.data
+                data['success'] = 'request rejected'
+                return Response(data)
+            else:
+                return Response({'error': 'request has already been accepted or rejected'})
+        else:
+            return Response({'error': 'request not found'})
+    else:
+        return Response({'error': 'access denied'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def request_visibility_view(request, pk):
+    request_object = models.Request.objects.filter(pk=pk)
+    if request_object.exists():
+        request_object = request_object.first()
+        if request.user.account_type == 'patient':
+            if request_object.reciever == request.user:
+                request_object.reciever_visibility = request.data.get('visibility')
+                request_object.save()
+                serializer = serializers.RequestSerializer(request_object)
+                return Response(serializer.data)
+            else:
+                return Response({'error': 'access denied'})
+        else:
+            if request_object.sender == request.user:
+                request_object.sender_visibility = request.data.get('visibility')
+                request_object.save()
+                serializer = serializers.RequestSerializer(request_object)
+                return Response(serializer.data)
+            else:
+                return Response({'error': 'access denied'})
+    else:
+        return Response({'error': 'request not found'})
