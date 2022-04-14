@@ -2,6 +2,11 @@ from django.contrib import admin
 from .models import *
 
 
+"""
+This code register models in admin panel with a customized admin view.
+"""
+
+
 class UserAdmin(admin.ModelAdmin):
     list_display = ('id', 'username', 'first_name', 'last_name', 'email', 'account_type', 'patient', 'doctor', 'inspector')
     list_filter = ('account_type',)

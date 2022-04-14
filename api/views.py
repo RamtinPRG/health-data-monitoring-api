@@ -37,6 +37,10 @@ class MyTokenObtainPairView(TokenObtainPairView):
 
 @api_view(['POST'])
 def signup(request):
+    """
+    Creates an account based on the payload of request and
+    checks the availability of username and validates the data.
+    """
     if request.user.is_authenticated:
         return Response({'error': 'You are already logged in.'})
     else:
@@ -53,23 +57,15 @@ def signup(request):
 
 @api_view(['POST'])
 def login_view(request):
+    """
+    Logs in an account based on the payload of request and
+    the ability of login.
+    This function (view) doesn't work since the authentication method
+    is Json Web Token (JWT) and needs the access token.
+    """
     if request.user.is_authenticated:
         return Response({'error': 'You are already logged in.'})
     else:
-        # serializer = serializers.UserSerializer(data=request.data)
-        # if serializer.is_valid():
-        #     username = request.data.get('username')
-        #     password = request.data.get('password')
-        #     user = authenticate(username=username, password=password)
-        #     if user is not None:
-        #         login(request, user)
-        #         return Response({'success': 'Logged in successfully.'})
-        #     else:
-        #         return Response({'error': 'Invalid username or password.'})
-        # else:
-        #     errors = serializer.errors
-        #     errors['error'] = 'Invalid data'
-        #     return Response(errors)
         username = request.data.get('username')
         password = request.data.get('password')
         user = authenticate(username=username, password=password)
@@ -90,6 +86,11 @@ def login_view(request):
 
 @api_view(['GET'])
 def logout_view(request):
+    """
+    Logs out the authorized user.
+    This function (view) doesn't work since the authentication method
+    is Json Web Token (JWT) and needs the access token.
+    """
     if request.user.is_authenticated:
         logout(request)
         return Response({'success': 'Logged out successfully.'})
@@ -99,6 +100,9 @@ def logout_view(request):
 
 @api_view(['GET'])
 def authentication_status(request):
+    """
+    Checks if the user is authenticated.
+    """
     if request.user.is_authenticated:
         return Response({'authenticated': True})
     else:
@@ -108,6 +112,11 @@ def authentication_status(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def doctors_view(request):
+    """
+    Returns a list of all doctors that has access to
+    the authorized patient.
+    It means it doesn't return the doctors for an unknown account.
+    """
     if request.user.account_type == 'patient':
         doctors = request.user.patient.doctor_set.all()
         serializer = serializers.DoctorSerializer(doctors, many=True)
@@ -119,6 +128,10 @@ def doctors_view(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def inspectors_view(request):
+    """
+    Returns a list of all inspectors that has access to
+    the authorized patient.
+    """
     if request.user.account_type == 'inspector':
         inspectors = request.user.inspector.patient_set.all()
         serializer = serializers.InspectorSerializer(inspectors, many=True)
@@ -130,6 +143,10 @@ def inspectors_view(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def patients_view(request):
+    """
+    Returns a list of all patients that the authorized
+    account (inspector or doctor) has access to.
+    """
     if request.user.account_type == 'doctor':
         patients = request.user.doctor.patients.all()
     elif request.user.account_type == 'inspector':
@@ -143,6 +160,9 @@ def patients_view(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def doctor_view(request, pk):
+    """
+    Returns a doctor based on the id of the doctor.
+    """
     if request.user.account_type == 'patient':
         doctor = request.user.patient.doctor_set.filter(pk=pk)
         if len(doctor) != 0:
@@ -154,6 +174,9 @@ def doctor_view(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def patient_view(request, pk):
+    """
+    Returns a patient based on the id of the patient.
+    """
     if models.User.objects.filter(pk=pk, account_type='patient').exists():
         patient = models.User.objects.get(pk=pk).patient
         serializer = serializers.PatientSerializer(patient)
@@ -165,6 +188,9 @@ def patient_view(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def inspector_view(request, pk):
+    """
+    Returns an inspector based on the id of the inspector.
+    """
     if request.user.account_type == 'patient':
         inspector = request.user.patient.inspector_set.filter(pk=pk)
         if inspector.exists():
@@ -176,6 +202,9 @@ def inspector_view(request, pk):
 @api_view(['GET', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def request_by_id_view(request, pk):
+    """
+    Returns or deletes a request based on the id of the request.
+    """
     request_object = models.Request.objects.filter(pk=pk)
     if request_object.exists():
         request_object = request_object.first()
@@ -207,6 +236,10 @@ def request_by_id_view(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def request_view(request):
+    """
+    Creates a new request in the database with
+    a specific sender, reciever and message.
+    """
     receiver = models.User.objects.filter(username=request.data.get('username'))
     if not receiver.exists():
         return Response({'error': 'receiver not found'})
@@ -228,6 +261,10 @@ def request_view(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def requests_view(request):
+    """
+    Returns a list of all requests that the authorized
+    account has sent or received.
+    """
     if request.user.account_type == 'patient':
         requests = models.Request.objects.filter(receiver=request.user)
     else:
@@ -266,6 +303,9 @@ def accept_request_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def reject_request_view(request):
+    """
+    Rejects a request based on the id of the request.
+    """
     if request.user.account_type == 'patient':
         request_object = models.Request.objects.filter(pk=request.data.get('id'))
         if request_object.exists():
@@ -288,6 +328,9 @@ def reject_request_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def request_visibility_view(request, pk):
+    """
+    Changes the visibility of a request based on the id of the request.
+    """
     request_object = models.Request.objects.filter(pk=pk)
     if request_object.exists():
         request_object = request_object.first()

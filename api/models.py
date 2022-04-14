@@ -9,6 +9,12 @@ def default_ecg_dictionary():
 
 
 class User(AbstractUser):
+    """
+    User model inherited from AbstractUser model
+    with other specific field.
+    1- account type: saves the type of account (patient, inspector, doctor)
+    2- Three one to one relationship with Patient, Doctor and Inspector models
+    """
     ACCOUNT_TYPES = (
         ('patient', 'Patient'),
         ('doctor', 'Doctor'),
@@ -21,6 +27,9 @@ class User(AbstractUser):
 
 
 class Patient(models.Model):
+    """
+    Saves the patient's health data.
+    """
     ecg = models.JSONField(default=default_ecg_dictionary)
     body_temp = models.FloatField(default=0)
     spo2 = models.FloatField(default=0)
@@ -28,14 +37,28 @@ class Patient(models.Model):
 
 
 class Doctor(models.Model):
+    """
+    Saves all the patients that the doctor is handling (if the account type is doctor).
+    """
     patients = models.ManyToManyField(Patient)
 
 
 class Inspector(models.Model):
+    """
+    Saves all the patients that the account is inspecting (if the account type is inspector).
+    """
     patients = models.ManyToManyField(Patient)
 
 
 class Request(models.Model):
+    """
+    Requests that have been created by users.
+    1- sender
+    2- receiver
+    3- message
+    4- timestamp
+    5- status
+    """
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('accepted', 'Accepted'),
