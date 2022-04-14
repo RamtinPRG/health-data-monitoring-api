@@ -21,9 +21,11 @@ class UserSerializer(ModelSerializer):
 
 
 class PatientSerializer(ModelSerializer):
+    user = UserSerializer(read_only=True)
+
     class Meta:
         model = models.Patient
-        fields = ('id', 'ecg', 'body_temp', 'spo2', 'heart_rate')
+        fields = ('id', 'user', 'ecg', 'body_temp', 'spo2', 'heart_rate')
 
 
 class DoctorSerializer(ModelSerializer):

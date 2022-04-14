@@ -154,12 +154,12 @@ def doctor_view(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def patient_view(request, pk):
-    if request.user.account_type == 'doctor' or request.user.account_type == 'inspector':
-        patient = request.user.inspector.patients.filter(pk=pk)
-        if patient.exists():
-            serializer = serializers.PatientSerializer(patient)
-            return Response(serializer.data)
-    return Response({'error': 'access denied'})
+    if models.User.objects.filter(pk=pk, account_type='patient').exists():
+        patient = models.User.objects.get(pk=pk).patient
+        serializer = serializers.PatientSerializer(patient)
+        return Response(serializer.data)
+    else:
+        return Response({'error': 'patient not found'})
 
 
 @api_view(['GET'])
